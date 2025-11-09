@@ -36,7 +36,7 @@ I modified the retry logic, which significantly increased RTLS speed!)
   <br><img width="150" height="150" alt="image" src="https://github.com/user-attachments/assets/0340e495-c9c9-4a98-8bec-5a8d768adfe8" />
 + reduced delay (You can achieve higher speed by reducing delays or tuning RTLS parameters in this library. But should be careful, because too short delay could ruin the DWM1000 HW. I recommend u to read user manual when u wanna modify delay)
 + NLOS/LOS Detection (Includes a detection logic based on signal quality registers in the DWM1000 — for example, FP Power, Rx Power, FP Ampl, and SNR.)
-  <br><img width="450" height="150" alt="image" src="https://github.com/user-attachments/assets/cccea283-ef4c-491f-9df9-24ec7a7357f6" />
+  <br><img width="670" height="225" alt="image" src="https://github.com/user-attachments/assets/cccea283-ef4c-491f-9df9-24ec7a7357f6" />
 + Filtering Logic 
 (Includes custom filtering functions for more stable position estimation.)
 <br/>
