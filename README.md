@@ -69,7 +69,7 @@ Contributors
 ------------
 <ul>
   <li><b>Jaeyun 'jjletsgo' Jung </b>:https://github.com/jjletsgo</li>
-  <li><b>Yujin 'jjletsgo' Lee </b>:https://github.com/euzin3</li>
+  <li><b>Yujin 'euzin3' Lee </b>:https://github.com/euzin3</li>
 </ul>
 
 License
