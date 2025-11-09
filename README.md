@@ -17,7 +17,7 @@
 ------------ 
 This is a fork of https://github.com/F-Army/arduino-dw1000-ng.
 
-I've developed a Fast **RTLS system using 4 anchors**, including:
+We've developed a Fast **RTLS system using 4 anchors**, including:
 
 + NLOS/LOS detection algorithm
 
