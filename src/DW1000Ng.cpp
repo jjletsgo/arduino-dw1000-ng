@@ -1478,7 +1478,7 @@ namespace DW1000Ng {
 			digitalWrite(_ss, LOW);
 			delay(1);
 			digitalWrite(_ss, HIGH);
-			delay(5);
+			delay(6);
 			setTxAntennaDelay(_antennaTxDelay);
 			if (_debounceClockEnabled){
 					enableDebounceClock();

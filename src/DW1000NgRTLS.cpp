@@ -29,6 +29,9 @@
 #include "DW1000NgTime.hpp"
 #include "DW1000NgRanging.hpp"
 
+// Maximum frame size for DW1000
+#define MAX_FRAME_SIZE 127
+
 static byte SEQ_NUMBER = 0;
 
 namespace DW1000NgRTLS {
@@ -164,7 +167,8 @@ namespace DW1000NgRTLS {
         if(!DW1000NgRTLS::waitForNextRangingStep()) return {false, 0};
 
         size_t init_len = DW1000Ng::getReceivedDataLength();
-        byte init_recv[init_len];
+        byte init_recv[MAX_FRAME_SIZE];
+        if(init_len > MAX_FRAME_SIZE) return {false, 0};
         DW1000Ng::getReceivedData(init_recv, init_len);
 
         if(!(init_len > 17 && init_recv[15] == RANGING_INITIATION)) {
@@ -187,7 +191,11 @@ namespace DW1000NgRTLS {
         } else {
 
             size_t cont_len = DW1000Ng::getReceivedDataLength();
-            byte cont_recv[cont_len];
+            byte cont_recv[MAX_FRAME_SIZE];
+            if(cont_len > MAX_FRAME_SIZE) {
+                returnValue = {false, false, 0, 0};
+                return returnValue;
+            }
             DW1000Ng::getReceivedData(cont_recv, cont_len);
 
             if (cont_len > 10 && cont_recv[9] == ACTIVITY_CONTROL && cont_recv[10] == RANGING_CONTINUE) {
@@ -204,7 +212,11 @@ namespace DW1000NgRTLS {
                 } else {
 
                     size_t act_len = DW1000Ng::getReceivedDataLength();
-                    byte act_recv[act_len];
+                    byte act_recv[MAX_FRAME_SIZE];
+                    if(act_len > MAX_FRAME_SIZE) {
+                        returnValue = {false, false, 0, 0};
+                        return returnValue;
+                    }
                     DW1000Ng::getReceivedData(act_recv, act_len);
 
                     if(act_len > 10 && act_recv[9] == ACTIVITY_CONTROL) {
@@ -228,41 +240,74 @@ namespace DW1000NgRTLS {
 
     RangeInfrastructureResult tagRangeInfrastructure(uint16_t target_anchor, uint16_t finalMessageDelay) {
         RangeInfrastructureResult returnValue;
+        const int MAX_ANCHOR_RETRIES = 3;  // 각 앵커별 최대 재시도 횟수
 
-        RangeResult result = tagFinishRange(target_anchor, finalMessageDelay);
+        // 첫 번째 앵커(Main) TWR - 재시도 포함
+        RangeResult result;
+        byte retry_count = 0;
+        bool first_anchor_success = false;
+        
+        while(retry_count < MAX_ANCHOR_RETRIES && !first_anchor_success) {
+            result = tagFinishRange(target_anchor, finalMessageDelay);
+            if(result.success) {
+                first_anchor_success = true;
+            } else {
+                retry_count++;
+                if(retry_count < MAX_ANCHOR_RETRIES) {
+                    delay(3);  // 재시도 전 대기
+                }
+            }
+        }
+        
+        if(!first_anchor_success) {
+            returnValue = {false , 0};
+            return returnValue;
+        }
+
         byte keep_going = 1;
 
-        if(!result.success) {
-            keep_going = 0;
-            returnValue = {false , 0};
-        } else {
-            while(result.success && result.next) {
-                result = tagFinishRange(result.next_anchor, finalMessageDelay);
-                if(!result.success) {
-                    keep_going = 0;
-                    returnValue = {false , 0};
-                    break;
+        // 나머지 앵커들과 순차적으로 TWR - 각 앵커별 재시도 포함
+        while(result.success && result.next) {
+            uint16_t next_anchor_address = result.next_anchor;
+            retry_count = 0;
+            bool anchor_success = false;
+            
+            // 현재 앵커와 최대 3회 재시도
+            while(retry_count < MAX_ANCHOR_RETRIES && !anchor_success) {
+                result = tagFinishRange(next_anchor_address, finalMessageDelay);
+                if(result.success) {
+                    anchor_success = true;
+                } else {
+                    retry_count++;
+                    if(retry_count < MAX_ANCHOR_RETRIES) {
+                        delay(3);  // 재시도 전 대기
+                    }
                 }
-
-                #if defined(ESP8266)
-                if (keep_going == 1) {
-                    yield();
-                }
-                #endif
+            }
+            
+            if(!anchor_success) {
+                keep_going = 0;
+                returnValue = {false , 0};
+                break;
             }
 
+            #if defined(ESP8266)
             if (keep_going == 1) {
+                yield();
+            }
+            #endif
+        }
 
-                if(result.success && result.new_blink_rate != 0) {
+        if (keep_going == 1) {
+            if(result.success && result.new_blink_rate != 0) {
+                keep_going = 0;
+                returnValue = { true, static_cast<uint16_t>(result.new_blink_rate) };
+            } else {
+                if(!result.success) {
                     keep_going = 0;
-                    returnValue = { true, static_cast<uint16_t>(result.new_blink_rate) };
+                    returnValue = { false , 0 };
                 } else {
-                    if(!result.success) {
-                        keep_going = 0;
-                        returnValue = { false , 0 };
-                    } else {
-                        // TODO. Handle this condition?
-                    }
+                    // TODO. Handle this condition?
                 }
             }
         }
@@ -282,7 +327,7 @@ namespace DW1000NgRTLS {
         return {false, 0};
     }
 
-    RangeAcceptResult anchorRangeAccept(NextActivity next, uint16_t value) {
+    RangeAcceptResult anchorRangeAccept(NextActivity next, uint16_t value) { 
         RangeAcceptResult returnValue;
 
         double range;
@@ -291,39 +336,47 @@ namespace DW1000NgRTLS {
         } else {
 
             size_t poll_len = DW1000Ng::getReceivedDataLength();
-            byte poll_data[poll_len];
+            byte poll_data[MAX_FRAME_SIZE];
+            if(poll_len > MAX_FRAME_SIZE) {
+                returnValue = {false, 0};
+                return returnValue;
+            }
             DW1000Ng::getReceivedData(poll_data, poll_len);
 
             if(poll_len > 9 && poll_data[9] == RANGING_TAG_POLL) {
-                uint64_t timePollReceived = DW1000Ng::getReceiveTimestamp();
-                DW1000NgRTLS::transmitResponseToPoll(&poll_data[7]);
-                DW1000NgRTLS::waitForTransmission();
-                uint64_t timeResponseToPoll = DW1000Ng::getTransmitTimestamp();
-                delayMicroseconds(1500);
+                uint64_t timePollReceived = DW1000Ng::getReceiveTimestamp(); //수신 타임 스탬프 저장
+                DW1000NgRTLS::transmitResponseToPoll(&poll_data[7]); // Poll에 응답 전송
+                DW1000NgRTLS::waitForTransmission(); // 전송 완료 대기
+                uint64_t timeResponseToPoll = DW1000Ng::getTransmitTimestamp(); //응답 전송 타임스탬프 저장
+                delayMicroseconds(1500); // DW1000 칩의 내부 처리 시간 대기
 
-                if(!DW1000NgRTLS::receiveFrame()) {
+                if(!DW1000NgRTLS::receiveFrame()) { // Final 메시지 수신 대기
                     returnValue = {false, 0};
                 } else {
 
-                    size_t rfinal_len = DW1000Ng::getReceivedDataLength();
-                    byte rfinal_data[rfinal_len];
-                    DW1000Ng::getReceivedData(rfinal_data, rfinal_len);
-                    if(rfinal_len > 18 && rfinal_data[9] == RANGING_TAG_FINAL_RESPONSE_EMBEDDED) {
-                        uint64_t timeFinalMessageReceive = DW1000Ng::getReceiveTimestamp();
+                    size_t rfinal_len = DW1000Ng::getReceivedDataLength(); // Final 메시지 길이 가져오기
+                    byte rfinal_data[MAX_FRAME_SIZE]; // Final 메시지 버퍼
+                    if(rfinal_len > MAX_FRAME_SIZE) { // 길이 검사
+                        returnValue = {false, 0}; // 길이 초과 시 실패 반환
+                        return returnValue; // 조기 종료
+                    }
+                    DW1000Ng::getReceivedData(rfinal_data, rfinal_len); // Final 메시지 데이터 가져오기
+                    if(rfinal_len > 18 && rfinal_data[9] == RANGING_TAG_FINAL_RESPONSE_EMBEDDED) { // Final 메시지 유효성 검사
+                        uint64_t timeFinalMessageReceive = DW1000Ng::getReceiveTimestamp(); // Final 메시지 수신 타임스탬프 저장
 
-                        byte finishValue[2];
-                        DW1000NgUtils::writeValueToBytes(finishValue, value, 2);
+                        byte finishValue[2]; 
+                        DW1000NgUtils::writeValueToBytes(finishValue, value, 2); 
 
-                        if(next == NextActivity::RANGING_CONFIRM) {
-                            DW1000NgRTLS::transmitRangingConfirm(&rfinal_data[7], finishValue);
+                        if(next == NextActivity::RANGING_CONFIRM) { // 다음 활동이 RANGING_CONFIRM인 경우
+                            DW1000NgRTLS::transmitRangingConfirm(&rfinal_data[7], finishValue); // Ranging Confirm 전송
                         } else {
-                            DW1000NgRTLS::transmitActivityFinished(&rfinal_data[7], finishValue);
+                            DW1000NgRTLS::transmitActivityFinished(&rfinal_data[7], finishValue); // 활동 종료 전송
                         }
                         
-                        DW1000NgRTLS::waitForTransmission();
+                        DW1000NgRTLS::waitForTransmission(); // 전송 완료 대기
 
-                        range = DW1000NgRanging::computeRangeAsymmetric(
-                            DW1000NgUtils::bytesAsValue(rfinal_data + 10, LENGTH_TIMESTAMP), // Poll send time
+                        range = DW1000NgRanging::computeRangeAsymmetric(// 비대칭 range 계산해서  range 변수에 저장
+                            DW1000NgUtils::bytesAsValue(rfinal_data + 10, LENGTH_TIMESTAMP), // Poll Sent time
                             timePollReceived, 
                             timeResponseToPoll, // Response to poll sent time
                             DW1000NgUtils::bytesAsValue(rfinal_data + 14, LENGTH_TIMESTAMP), // Response to Poll Received
@@ -331,13 +384,13 @@ namespace DW1000NgRTLS {
                             timeFinalMessageReceive // Final message receive time
                         );
 
-                        range = DW1000NgRanging::correctRange(range);
+                        range = DW1000NgRanging::correctRange(range); // 보정된 range 계산
 
                         /* In case of wrong read due to bad device calibration */
-                        if(range <= 0) 
-                            range = 0.000001;
+                        if(range <= 0) // 잘못된 range 값 처리
+                            range = 0.000001; // 최소값 설정
 
-                        returnValue = {true, range};
+                        returnValue = {true, range}; // 성공 반환
                     }
                 }
             }

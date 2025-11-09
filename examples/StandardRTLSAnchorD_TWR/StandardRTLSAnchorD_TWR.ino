@@ -7,7 +7,7 @@
 */
 
 /* 
- * StandardRTLSAnchorB_TWR.ino
+ * StandardRTLSAnchorD_TWR.ino
  * 
  * This is an example slave anchor in a RTLS using two way ranging ISO/IEC 24730-62_2013 messages
  */
@@ -23,14 +23,14 @@
  const uint8_t PIN_MISO = 19;
  const uint8_t PIN_SS = 4;
  const uint8_t PIN_RST = 15; 
- const uint8_t PIN_IRQ = 17; 
+ const uint8_t PIN_IRQ = 17;
  
  // Extended Unique Identifier register. 64-bit device identifier. Register file: 0x01
- const char EUI[] = "AA:BB:CC:DD:EE:FF:00:02";
+ const char EUI[] = "AA:BB:CC:DD:EE:FF:00:04"; 
  
  byte main_anchor_address[] = {0x01, 0x00};
  
-uint16_t next_anchor = 3;
+uint16_t blink_rate = 20;
 
 double range_self = 0.0;  // Initialize to prevent sending garbage values
  
@@ -62,7 +62,7 @@ double range_self = 0.0;  // Initialize to prevent sending garbage values
  void setup() {
      // DEBUG monitoring
      Serial.begin(115200);
-     Serial.println(F("### arduino-DW1000Ng-ranging-anchor-B ###"));
+     Serial.println(F("### arduino-DW1000Ng-ranging-anchor-D ###"));
      // initialize the driver
      DW1000Ng::initializeNoInterrupt(PIN_SS, PIN_RST);
      Serial.println(F("DW1000Ng initialized ..."));
@@ -77,7 +77,7 @@ double range_self = 0.0;  // Initialize to prevent sending garbage values
      DW1000Ng::setReceiveFrameWaitTimeoutPeriod(5000);
  
      DW1000Ng::setNetworkId(RTLS_APP_ID);
-     DW1000Ng::setDeviceAddress(2);
+     DW1000Ng::setDeviceAddress(4);
      
      DW1000Ng::setAntennaDelay(16436);
      
@@ -92,7 +92,6 @@ double range_self = 0.0;  // Initialize to prevent sending garbage values
      Serial.print("Network ID & Device Address: "); Serial.println(msg);
      DW1000Ng::getPrintableDeviceMode(msg);
      Serial.print("Device mode: "); Serial.println(msg);
-   
  }
  
 void transmitRangeReport() {
@@ -115,27 +114,28 @@ void transmitRangeReport() {
     DW1000Ng::startTransmit();
 }
   
-void loop() {     
-        RangeAcceptResult result = DW1000NgRTLS::anchorRangeAccept(NextActivity::RANGING_CONFIRM, next_anchor);
-        if(result.success) {
-            delay(5); // Tweak based on your hardware
-            range_self = result.range;
-            
-            // Only transmit if range is valid (not zero)
-            if(range_self > 0.0) {
-                transmitRangeReport();
-                DW1000NgRTLS::waitForTransmission();  // Wait for transmission to complete
+ void loop() {
+     RangeAcceptResult result = DW1000NgRTLS::anchorRangeAccept(NextActivity::ACTIVITY_FINISHED, blink_rate);
+     if(result.success) {
+        delay(5); // Tweak based on your hardware
+        range_self = result.range;
+        
+        // Only transmit if range is valid (not zero)
+        if(range_self > 0.0) {
+            transmitRangeReport();
+            DW1000NgRTLS::waitForTransmission();  // Wait for transmission to complete
 
-                Serial.print("Range: ");
-                Serial.print(range_self, 3);
-                Serial.print(" m\t RX power: ");
-                Serial.print(DW1000Ng::getReceivePower(), 2);
-                Serial.print(" dBm\t FP power: ");
-                Serial.print(DW1000Ng::getFirstPathPower(), 2);
-                Serial.println(" dBm");
-            } else {
-                Serial.println("Invalid range (zero), skipping report transmission");
-            }
+            Serial.print("Range: ");
+            Serial.print(range_self, 3);
+            Serial.print(" m\t RX power: ");
+            Serial.print(DW1000Ng::getReceivePower(), 2);
+            Serial.print(" dBm\t FP power: ");
+            Serial.print(DW1000Ng::getFirstPathPower(), 2);
+            Serial.println(" dBm");
+        } else {
+            Serial.println("Invalid range (zero), skipping report transmission");
         }
+     }
 }
+ 
  
